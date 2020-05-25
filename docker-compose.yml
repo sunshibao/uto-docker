@@ -1,0 +1,232 @@
+version: '3.7'
+
+# 容器时区
+services:
+  workspace:
+    build:
+      context: ./workspace
+      args:
+        http_proxy: "${HTTP_PROXY}"
+        https_proxy: "${HTTPS_PROXY}"
+        no_proxy: "${NO_PROXY}"
+    environment:
+      - http_proxy=${HTTP_PROXY}
+      - https_proxy=${HTTPS_PROXY}
+      - no_proxy=${NO_PROXY}
+      - GO111MODULE=off
+    restart: always
+    command: /bin/sh -c "/var/www/start.sh"
+    stdin_open: true
+    tty: true
+    volumes:
+      - "./data/etcd:/var/www/tmp/data"
+      - "${PHP_WORK_SPACE}:/var/www/html"
+      - "${GO_WORK_SPACE}:/var/www/go"
+    ports:
+        - 10000:10000
+        - 9503:9503
+    expose:
+      - 10081
+    networks:
+      uto:
+        aliases:
+          - workspace
+
+  nginx:
+    build:
+      context: ./grpc-nginx
+    volumes:
+      - "./etc/grpc-nginx:/etc/nginx/conf.d"
+      - "./etc/grpc-nginx:/etc/confd"
+    command: /bin/sh -c "/confd/start.sh"
+    restart: always
+    ports:
+      - 8081:80
+    depends_on:
+      - workspace
+    expose:
+      - 8080
+    networks:
+      uto:
+        aliases:
+          - nginx
+
+  redis:
+    build: ./redis
+    volumes:
+      - "./etc/redis:/usr/local/etc/redis"
+    ports:
+      - 6380:6379
+    restart: always
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      uto:
+        aliases:
+          - redis
+
+  etcd:
+    build:
+      context: ./etcd
+    restart: always
+    ports:
+      - 2379:2379
+    networks:
+      uto:
+        aliases:
+          - etcd
+
+  mysql:
+    build: ./mysql
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+    ports:
+      - "3307:3306"
+    volumes:
+      - "./data/mysql:/var/lib/mysql"
+    networks:
+      uto:
+        aliases:
+          - mysql
+
+  nsqlookupd:
+    container_name: nsqlookupd
+    image: nsqio/nsq
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+    command: /nsqlookupd
+    networks:
+      uto:
+        aliases:
+          - nsqlookupd
+    ports:
+      - 4160:4160
+      - 4161:4161
+  nsqd:
+    container_name: nsqd
+    image: nsqio/nsq
+    restart: always
+    environment:
+      - TZ=Asia/shanghai
+    command: /nsqd --lookupd-tcp-address=nsqlookupd:4160
+    depends_on:
+      - nsqlookupd
+    networks:
+      uto:
+        aliases:
+          - nsqd
+    ports:
+      - 4150:4150
+      - 4151:4151
+  nsqadmin:
+    container_name: nsqadmin
+    image: nsqio/nsq
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+    command: /nsqadmin --nsqd-http-address=nsqd:4151
+    depends_on:
+      - nsqd
+    networks:
+      uto:
+        aliases:
+          - nsqadmin
+    ports:
+      - 4171:4171
+#################### zookeeper kafka ###################
+  zookeeper:
+    container_name: zookeeper
+    image: zookeeper:3.4
+    restart: always
+    networks:
+      uto:
+        aliases:
+          - zookeeper
+    ports:
+      - 2181:2181
+  kafka:
+    container_name: kafka
+    image: wurstmeister/kafka:2.12-2.1.0
+    restart: always
+    ports:
+      - 9092:9092
+      - 7203:7203
+    networks:
+      uto:
+        aliases:
+          - kafka
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: 172.31.2.133
+      KAFKA_ZOOKEEPER_CONNECT: 172.31.2.133:2181
+########################## GateWay ##########################
+#  gateway-open:
+#    container_name: gateway-open
+#    image: centos
+#    restart: always
+#    environment:
+#      - TZ=Asia/Shanghai
+#    volumes:
+#      - "./gateway/irpc-gateway:/irpc-gateway"
+#      - "./gateway/gateway-open.json:/gateway-open.json"
+#    command: /irpc-gateway --config-path=/gateway-open.json
+#    depends_on:
+#      - etcd
+#      - mysql
+#      - redis
+#      - nsqd
+#      - nsqlookupd
+#    networks:
+#      uto:
+#        aliases:
+#          - gateway
+#    ports:
+#      - 8002:8002
+#  gateway-internal:
+#    container_name: gateway-internal
+#    image: centos
+#    restart: always
+#    environment:
+#      - TZ=Asia/Shanghai
+#    volumes:
+#      - "./gateway/irpc-gateway:/irpc-gateway"
+#      - "./gateway/gateway-internal.json:/gateway-internal.json"
+#    command: /irpc-gateway --config-path=/gateway-internal.json
+#    depends_on:
+#      - etcd
+#      - mysql
+#      - redis
+#      - nsqd
+#      - nsqlookupd
+#    networks:
+#      uto:
+#        aliases:
+#          - gateway
+#    ports:
+#      - 8001:8001
+#  gateway-app:
+#    container_name: gateway-app
+#    image: centos
+#    restart: always
+#    environment:
+#      - TZ=Asia/Shanghai
+#    volumes:
+#      - "./gateway/irpc-gateway:/irpc-gateway"
+#      - "./gateway/gateway-app.json:/gateway-app.json"
+#    command: /irpc-gateway --config-path=/gateway-app.json
+#    depends_on:
+#      - etcd
+#      - mysql
+#      - redis
+#      - nsqd
+#      - nsqlookupd
+#    networks:
+#      uto:
+#        aliases:
+#          - gateway
+#    ports:
+#      - 8000:8000
+
+
+networks:
+  uto:

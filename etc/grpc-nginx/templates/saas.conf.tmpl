@@ -1,0 +1,22 @@
+{{if lsdir "/STYD_SERVICE/SERVICE"}}
+{{$location := map}}
+{{range $dir := lsdir "/STYD_SERVICE/SERVICE"}}
+upstream {{base $dir}} {
+    {{$custdir := printf "/STYD_SERVICE/SERVICE/%s/*" $dir}}{{range gets $custdir}}
+    server {{$data := json .Value}}{{$data.address}}:{{$data.port}};
+    {{range $k, $v := $data.handles}}
+    {{$location := addMapVal $location $k (base $dir)}}
+    {{end}}
+    {{end}}
+}
+{{end}}
+
+server {
+    listen 8080 http2;
+    {{range $k, $v := $location}}
+    location /{{$k}} {
+        grpc_pass grpc://{{$v}};
+    }
+    {{end}}
+}
+{{end}}

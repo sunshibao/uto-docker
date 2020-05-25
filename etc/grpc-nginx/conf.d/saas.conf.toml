@@ -1,0 +1,8 @@
+[template]
+src = "saas.conf.tmpl"
+dest = "/etc/nginx/conf.d/saas.conf"
+keys = [
+    "/STYD_SERVICE/",
+]
+
+reload_cmd = "nginx -s reload"
